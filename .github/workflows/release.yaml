@@ -114,7 +114,8 @@ jobs:
       shell: 'powershell'
       run: | 
         C:\msys64\usr\bin\wget.exe -nv -P vcpkg/downloads https://github.com/microsoft/vcpkg/files/7075269/nasm-2.15.05-win32.zip
-        7z x vcpkg/downloads/nasm-2.15.05-win32.zip
+        cd vcpkg/downloads
+        7z x nasm-2.15.05-win32.zip
     - name: Test
       shell: 'powershell'
       run: ls vcpkg/downloads
