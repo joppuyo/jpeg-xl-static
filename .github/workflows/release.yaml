@@ -186,8 +186,8 @@ jobs:
         cp LICENSE prefix/bin/LICENSE.libjxl
     - name: Calculate checksum
       run: | 
-        certUtil -hashfile prefix/bin/cjxl SHA256
-        certUtil -hashfile prefix/bin/djxl SHA256
+        certUtil -hashfile prefix/bin/cjxl.exe SHA256
+        certUtil -hashfile prefix/bin/djxl.exe SHA256
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:
