@@ -1,0 +1,199 @@
+# Copyright (c) the JPEG XL Project Authors. All rights reserved.
+#
+# Use of this source code is governed by a BSD-style
+# license that can be found in the LICENSE file.
+
+# Workflow for building the release binaries.
+#
+# This workflow runs as a post-submit step, when pushing to main or the release
+# branches (v*.*.x), and when creating a release in GitHub.
+#
+# In the GitHub release case, in addition to build the release binaries it also
+# uploads the binaries to the given release automatically.
+
+name: Release build / deploy
+on:
+  push:
+    branches:
+      - main
+      - v*.*.x
+  release:
+    types: [ published ]
+
+jobs:
+  ubuntu_static_x86_64:
+    name: Release linux x86_64 static
+    runs-on: [ubuntu-latest]
+    steps:
+    - name: Install build deps
+      run: |
+        sudo apt update
+        sudo apt install -y \
+          asciidoc \
+          clang \
+          cmake \
+          doxygen \
+          libbrotli-dev \
+          libgdk-pixbuf2.0-dev \
+          libgif-dev \
+          libgtest-dev \
+          libgtk2.0-dev  \
+          libjpeg-dev \
+          libopenexr-dev \
+          libpng-dev \
+          libwebp-dev \
+          ninja-build \
+          pkg-config \
+        #
+        echo "CC=clang" >> $GITHUB_ENV
+        echo "CXX=clang++" >> $GITHUB_ENV
+    - name: Checkout the source
+      uses: actions/checkout@v2
+      with:
+        submodules: true
+        fetch-depth: 1
+
+    - name: Build
+      env:
+        SKIP_TEST: 1
+      run: |
+        ./ci.sh release \
+          -DJPEGXL_DEP_LICENSE_DIR=/usr/share/doc \
+          -DJPEGXL_STATIC=ON \
+          -DBUILD_TESTING=OFF \
+          -DJPEGXL_ENABLE_VIEWERS=OFF \
+          -DJPEGXL_ENABLE_PLUGINS=OFF \
+          -DJPEGXL_ENABLE_OPENEXR=OFF \
+    - name: Package release tarball
+      run: |
+        cd build
+        tar -zcvf ${{ runner.workspace }}/release_file.tar.gz \
+          LICENSE* tools/{cjxl,djxl,benchmark_xl}
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: jxl-linux-x86_64-static
+        path: ${{ runner.workspace }}/release_file.tar.gz
+
+    - name: Upload binaries to release
+      if: github.event_name == 'release'
+      uses: svenstaro/upload-release-action@v1-release
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ${{ runner.workspace }}/release_file.tar.gz
+        asset_name: jxl-linux-x86_64-static-${{ github.event.release.tag_name }}.tar.gz
+        tag: ${{ github.ref }}
+        overwrite: true
+
+  windows_build:
+    name: Windows Build (vcpkg / ${{ matrix.triplet }})
+    runs-on: [windows-latest]
+    strategy:
+      matrix:
+        include:
+          - triplet: x86-windows-static
+            arch: '-A Win32'
+          - triplet: x64-windows-static
+            arch: '-A x64'
+
+    env:
+      VCPKG_VERSION: '2021.05.12'
+      VCPKG_ROOT: vcpkg
+      VCPKG_DISABLE_METRICS: 1
+
+    steps:
+    - name: Checkout the source
+      uses: actions/checkout@v2
+      with:
+        submodules: true
+        fetch-depth: 2
+
+    - uses: actions/cache@v2
+      id: cache-vcpkg
+      with:
+        path: vcpkg
+        key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.triplet }}
+
+    - name: Download vcpkg
+      if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+      # wget doesn't seem to work under bash.
+      shell: 'powershell'
+      run: |
+        C:\msys64\usr\bin\wget.exe -nv `
+           https://github.com/microsoft/vcpkg/archive/refs/tags/${{ env.VCPKG_VERSION }}.zip `
+          -O vcpkg.zip
+    - name: Bootstrap vcpkg
+      if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+      shell: 'bash'
+      run: |
+        set -x
+        unzip -q vcpkg.zip
+        rm -rf ${VCPKG_ROOT}
+        mv vcpkg-${VCPKG_VERSION} ${VCPKG_ROOT}
+        ${VCPKG_ROOT}/bootstrap-vcpkg.sh
+    - name: Install libraries with vcpkg
+      shell: 'bash'
+      run: |
+        set -x
+        ${VCPKG_ROOT}/vcpkg --triplet ${{ matrix.triplet }} install \
+          giflib \
+          libjpeg-turbo \
+          libpng \
+          libwebp \
+        #
+    - name: Configure
+      shell: 'bash'
+      run: |
+        set -x
+        mkdir build
+        cmake -Bbuild -H. ${{ matrix.arch }} \
+          -DBUILD_TESTING=OFF \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=`pwd`/prefix \
+          -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake \
+          -DJPEGXL_ENABLE_OPENEXR=OFF \
+          -DJPEGXL_ENABLE_PLUGINS=OFF \
+          -DJPEGXL_ENABLE_TCMALLOC=OFF \
+          -DJPEGXL_ENABLE_VIEWERS=OFF \
+          -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
+        #
+    - name: Build
+      shell: 'bash'
+      run: |
+        set -x
+        cmake --build build --config Release
+    - name: Install
+      shell: 'bash'
+      run: |
+        set -x
+        cmake --build build --config Release --target install
+        for pkg in giflib libjpeg-turbo libpng libwebp zlib; do
+          cp vcpkg/installed/${{matrix.triplet}}/share/${pkg}/copyright \
+            prefix/bin/LICENSE.${pkg}
+        done
+        cp third_party/sjpeg/COPYING prefix/bin/LICENSE.sjpeg
+        cp third_party/skcms/LICENSE prefix/bin/LICENSE.skcms
+        cp third_party/highway/LICENSE prefix/bin/LICENSE.highway
+        cp third_party/brotli/LICENSE prefix/bin/LICENSE.brotli
+        cp LICENSE prefix/bin/LICENSE.libjxl
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: jxl-${{matrix.triplet}}
+        path: |
+          prefix/bin/*
+    - name: Package release zip
+      if: github.event_name == 'release'
+      shell: 'powershell'
+      run: |
+        Compress-Archive -Path prefix\bin\* `
+          -DestinationPath ${{ runner.workspace }}\release_file.zip
+    - name: Upload binaries to release
+      if: github.event_name == 'release'
+      uses: svenstaro/upload-release-action@v1-release
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ${{ runner.workspace }}/release_file.zip
+        asset_name: jxl-${{matrix.triplet}}.zip
+        tag: ${{ github.ref }}
+        overwrite: true
