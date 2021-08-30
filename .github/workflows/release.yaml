@@ -184,6 +184,10 @@ jobs:
         cp third_party/highway/LICENSE prefix/bin/LICENSE.highway
         cp third_party/brotli/LICENSE prefix/bin/LICENSE.brotli
         cp LICENSE prefix/bin/LICENSE.libjxl
+    - name: Calculate checksum
+      run: | 
+        certUtil -hashfile prefix/bin/cjxl SHA256
+        certUtil -hashfile prefix/bin/djxl SHA256
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:
