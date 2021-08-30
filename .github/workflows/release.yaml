@@ -110,21 +110,11 @@ jobs:
       with:
         submodules: true
         fetch-depth: 2
-    - name: Download missing library
-      shell: 'powershell'
-      run: | 
-        C:\msys64\usr\bin\wget.exe -nv -P vcpkg/downloads https://github.com/microsoft/vcpkg/files/7075269/nasm-2.15.05-win32.zip
-        cd vcpkg/downloads
-        7z x nasm-2.15.05-win32.zip
-    - name: Test
-      shell: 'powershell'
-      run: ls vcpkg/downloads
     - uses: actions/cache@v2
       id: cache-vcpkg
       with:
         path: vcpkg
         key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.triplet }}
-
     - name: Download vcpkg
       if: steps.cache-vcpkg.outputs.cache-hit != 'true'
       # wget doesn't seem to work under bash.
@@ -142,6 +132,13 @@ jobs:
         rm -rf ${VCPKG_ROOT}
         mv vcpkg-${VCPKG_VERSION} ${VCPKG_ROOT}
         ${VCPKG_ROOT}/bootstrap-vcpkg.sh
+    - name: Download missing library
+      shell: 'powershell'
+      run: | 
+        C:\msys64\usr\bin\wget.exe -nv -P vcpkg/downloads https://github.com/microsoft/vcpkg/files/7075269/nasm-2.15.05-win32.zip
+    - name: Test
+      shell: 'powershell'
+      run: ls vcpkg/downloads
     - name: Install libraries with vcpkg
       shell: 'bash'
       run: |
