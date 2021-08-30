@@ -113,7 +113,7 @@ jobs:
     - name: Download missing library
       shell: 'powershell'
       run: |
-         C:\msys64\usr\bin\wget.exe 'https://github.com/microsoft/vcpkg/files/7075269/nasm-2.15.05-win32.zip' -P `${VCPKG_ROOT}/downloads`
+         C:\msys64\usr\bin\wget.exe -nv `https://github.com/microsoft/vcpkg/files/7075269/nasm-2.15.05-win32.zip` -P `${VCPKG_ROOT}/downloads`
     - uses: actions/cache@v2
       id: cache-vcpkg
       with:
