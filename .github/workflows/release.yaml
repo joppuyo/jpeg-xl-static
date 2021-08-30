@@ -69,6 +69,9 @@ jobs:
         cd build
         tar -zcvf ${{ runner.workspace }}/release_file.tar.gz \
           LICENSE* tools/{cjxl,djxl,benchmark_xl}
+    - name: Calculate checksum
+      run: shasum -a 256 build/tools/cjxl &&
+           shasum -a 256 build/tools/djxl
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:
